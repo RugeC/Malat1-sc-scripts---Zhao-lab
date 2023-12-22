@@ -1,0 +1,62 @@
+library(Seurat)
+library(clustree)
+#Import data.
+#Filter out genes expressing in less than 3 cells and cells with fewer than 500 genes.
+seurat_list <- list()
+for (subfolder in c("b1", "b2", "b3", "b4",'bm1','bm2','bm4')) {
+  seurat_data <- Read10X(data.dir = subfolder)
+  seurat_obj <- CreateSeuratObject(counts = seurat_data, 
+                                   min.cells = 3, 
+                                   min.features = 500,
+                                   project = subfolder)
+  assign(subfolder, seurat_obj)
+  Idents(seurat_obj) <- subfolder
+  seurat_list[[subfolder]] <- seurat_obj
+}
+#Exclude cells with more than 5% mitochondrial reads and 6,000 nFeature_RNA.
+seurat_list <- lapply(seurat_list, function(seurat_obj) {
+  seurat_obj[["percent.mt"]] <- PercentageFeatureSet(seurat_obj, pattern = "^mt")
+  seurat_obj <- subset(x = seurat_obj, 
+   subset= (nFeature_RNA < 6000) & (percent.mt < 10))
+  seurat_obj <- NormalizeData(seurat_obj)
+  seurat_obj <-FindVariableFeatures(seurat_obj,nfeatures = 5000, selection.method = 'dispersion')
+  seurat_obj<- ScaleData(seurat_obj,features = VariableFeatures(seurat_obj))
+   return(seurat_obj)
+})
+
+VlnPlot(seurat_list[[8]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+#Integrate datasets
+anchors <- FindIntegrationAnchors(object.list = seurat_list, dims = 1:30)
+merged_seurat <- IntegrateData(anchorset = anchors)
+#Find clusters and run UMAP
+DefaultAssay(merged_seurat) <- 'integrated'
+merged_seurat = ScaleData(merged_seurat)
+merged_seurat <- RunPCA(merged_seurat)
+pc = 30
+merged_seurat <- FindNeighbors(merged_seurat, dims = 1:pc)
+merged_seurat <- FindClusters(merged_seurat, resolution = seq(0.01,0.1,by=0.01))
+clustree(merged_seurat,assay = 'integrated')
+merged_seurat <- FindClusters(merged_seurat, resolution = 0.1)
+merged_seurat <- RunUMAP(merged_seurat, 
+                         reduction = "pca", 
+                         dims = 1:pc,n.neighbors = pc/2+1,min.dist = 0.3)
+DimPlot(merged_seurat,reduction = "umap", label = T)
+DefaultAssay(merged_seurat) <- 'RNA'
+select_genes=c('Tnfrsf11b','Acan','Col2a1','Sox9')
+select_genes = c('Adipoq','Lepr','Cxcl12','Cebpa','Kitl','Lpl','Prrx1','Col1a1','Ibsp','Bglap','Pecam1','Cdh5','Mpz','Mbp','Plp1','Acta2','Myh11','Mcam')
+select_genes = c('Cd19','S100a8','Gypa','Alas2','Snca','Hbb-bs','Hbb-bt','Car2','Car1','Klf1','Gata1','Gata2','Pf4','Itga2b','Fli1','Cd68','Lyz2','Ly6c2','Sell')
+VlnPlot(merged_seurat, features = select_genes,assay = 'RNA', slot = 'data', pt.size=0, ncol=5)
+DotPlot(merged_seurat, features = select_genes,col.min = 0,assay = 'RNA'  ,cols = c("lightgrey" ,"blue"))
+FeaturePlot(merged_seurat, features = select_genes, reduction = "umap",label=T, ncol = 1,pt.size=0.5, cols = c("lightgrey" ,"blue"))
+#Annotation
+new.cluster.id=c("Osteoblast-lineage","Adipoq-lineage progenitors","ECs","Erythroid cells-2","Pericytes", "Chondrocytes","Megakaryocytes","B cells", "Neutrophils","Osteoblast-lineage", "Adipoq-lineage progenitors","Monocyte-Macrophage lineage ","Osteoblast-lineage","Schwann cells ","Erythroid cells-1")
+names(new.cluster.id)=levels(merged_seurat)
+merged_seurat=RenameIdents(merged_seurat,new.cluster.id)
+#Findallmarkers
+merged_seurat.markers <- FindAllMarkers(merged_seurat,only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.25)
+top100 <- merged_seurat.markers %>%
+  filter(p_val_adj < 0.05) %>%
+  group_by(cluster) %>%
+  top_n(n = 100, wt = avg_log2FC) %>%
+  arrange(cluster, desc(avg_log2FC))

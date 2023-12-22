@@ -1,4 +1,4 @@
-**Long non-coding RNA Malat1 is essential for fine-tuning bone homeostasis through orchestrating cellular crosstalk and the β-catenin-OPG/Jagged1 pathway**
+# Long non-coding RNA Malat1 is essential for fine-tuning bone homeostasis through orchestrating cellular crosstalk and the β-catenin-OPG/Jagged1 pathway
 
 Single cell RNAseq datasets for bone (GSM3674239, GSM3674240, GSM3674241, GSM3674242) and bone marrow (GSM3674243, GSM3674244, GSM3674246) were downloaded from GSE128423. 
 
